@@ -1,0 +1,7 @@
+{
+  "name": "text2Speech",
+  "repository": "https://github.com/ValentinBossi/text2Speech",
+  "logo": "https://cdn.rawgit.com/heroku/node-js-getting-started/master/public/node.svg",
+  "keywords": ["node", "express", "heroku"],
+  "image": "heroku/nodejs"
+}
