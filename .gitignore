@@ -10,5 +10,3 @@ npm-debug.log
 # Docker
 Dockerfile
 docker-compose.yml
-
-text2speech-cea475955cdf.json
