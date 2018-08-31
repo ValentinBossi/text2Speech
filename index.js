@@ -4,6 +4,7 @@ var bodyParser = require('body-parser')
 // Imports the Google Cloud client library
 const textToSpeech = require('@google-cloud/text-to-speech');
 var app = express();
+const PORT = process.env.PORT || 3000
 
 // Creates a client
 const client = new textToSpeech.TextToSpeechClient();
@@ -69,6 +70,6 @@ app.post('/convert', function (req, res, next) {
 
 });
 
-app.listen(3000, function () {
+app.listen(PORT, function () {
   console.log('Example app listening on port 3000!');
 });
