@@ -17,7 +17,7 @@ const languageCode = "de-DE";
 const request = {
   input: {text: text},
   // Select the language and SSML Voice Gender (optional)
-  voice: {languageCode: languageCode, "name": "de-DE-Wavenet-B"},
+  voice: {languageCode: languageCode, name: "de-DE-Wavenet-B"},
   // Select the type of audio encoding OGG_OPUS, MP3
   audioConfig: {audioEncoding: 'OGG_OPUS', effectsProfileId: [
     "headphone-class-device"
@@ -37,7 +37,9 @@ app.post('/convert', function (req, res, next) {
   console.log(req.body);
   request.input.text = req.body.text;
   request.voice.languageCode = req.body.languageCode;
-  if(req.body.languageCode !== languageCode){
+  if(req.body.languageCode === languageCode){
+    request.voice.name = "de-DE-Wavenet-B";
+  } else {
     request.voice.name = "en-US-Wavenet-B";
   }
   /*
