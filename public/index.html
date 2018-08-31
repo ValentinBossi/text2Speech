@@ -74,6 +74,7 @@
                     var blobUrl = URL.createObjectURL(blob);
                     $("#source").attr("src", blobUrl);
                     $("#audio")[0].load();
+                    $("#audio")[0].play();
                 }).catch((data)=>console.log(data));
             }).catch((data)=>console.log(data));;
         }
