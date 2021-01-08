@@ -1,22 +1,24 @@
-const fs = require('fs');
-const express = require('express');
-const bodyParser = require('body-parser');
+import { unlink, writeFile } from 'fs';
+import * as express from 'express';
+import { json } from 'body-parser';
 // Imports the Google Cloud client library
-const textToSpeech = require('@google-cloud/text-to-speech');
-const ffmpeg = require('fluent-ffmpeg');
-const uuid = require("uuid");
-const axios = require("axios");
-const readability = require("./public/Readability");
-const jsdom = require("jsdom");
+import { TextToSpeechClient } from '@google-cloud/text-to-speech'
+import { google } from "@google-cloud/text-to-speech/build/protos/protos";
+import ISynthesizeSpeechRequest = google.cloud.texttospeech.v1.ISynthesizeSpeechRequest;
+import * as ffmpeg from 'fluent-ffmpeg'
+import * as uuid from 'uuid'
+import axios from 'axios'
+import * as Readability from './public/Readability'
+import * as jsdom from 'jsdom';
 const { JSDOM } = jsdom;
 const app = express();
 const PORT = process.env.PORT || 3000;
 process.env['GOOGLE_APPLICATION_CREDENTIALS'] = 'text2speech-cea475955cdf.json';
 
 // Creates a client
-const client = new textToSpeech.TextToSpeechClient();
+const client = new TextToSpeechClient();
 
-app.use(bodyParser.json())
+app.use(json())
 
 app.use('/', express.static(__dirname + '/public'));
 
@@ -24,7 +26,7 @@ app.post('/converturl', function (req, res, next) {
   axios.get(req.body.url)
     .then(function (response) {
       const { document } = (new JSDOM(response.data)).window;
-      const article = new readability(document).parse();
+      const article = new Readability(document, null).parse();
       console.log(article.textContent)
       // handle success
       res.json({ textContent: article.textContent });
@@ -73,7 +75,7 @@ app.post('/convert', function (req, res, next) {
   for (let index = 0; index < chunksAndFilename.length; index++) {
     audioRespones.push(new Promise((resolve) => {
       // Construct the request
-      let request = {
+      let request: ISynthesizeSpeechRequest = {
         input: { text: chunksAndFilename[index].textChunk },
         // Select the language and SSML Voice Gender (optional)
         voice: { languageCode: languageCode, name: voiceName },
@@ -81,9 +83,10 @@ app.post('/convert', function (req, res, next) {
         audioConfig: {
           audioEncoding: 'LINEAR16', effectsProfileId: [
             "headphone-class-device"
-          ]
-        }, "pitch": "0.00",
-        "speakingRate": "1.00"
+          ],
+          "pitch": 0,
+          "speakingRate": 1
+        }
       };
       // Performs the Text-to-Speech request
       client.synthesizeSpeech(request, (err, response) => {
@@ -114,12 +117,12 @@ app.post('/convert', function (req, res, next) {
           } else {
             console.log('Sent: merged mp3: ' + mergedFilename + ".mp3");
             filenames.map((filename) => {
-              fs.unlink(__dirname + "/public/" + filename + ".wav", (err) => {
+              unlink(__dirname + "/public/" + filename + ".wav", (err) => {
                 if (err) throw err;
                 console.log('path/file.txt was deleted');
               });
             });
-            fs.unlink(__dirname + "/public/" + mergedFilename + ".mp3", (err) => {
+            unlink(__dirname + "/public/" + mergedFilename + ".mp3", (err) => {
               if (err) throw err;
               console.log('path/file.txt was deleted');
             });
@@ -127,7 +130,7 @@ app.post('/convert', function (req, res, next) {
         });
       });
     } if (filenames.length > 1) {
-      command.mergeToFile(__dirname + "/public/" + mergedFilename + ".wav", __dirname + "/public/").on("end", () => {
+      command.mergeToFile(__dirname + "/public/" + mergedFilename + ".wav").on("end", () => {
         command = ffmpeg();
         command.input(__dirname + "/public/" + mergedFilename + ".wav").audioBitrate('48k').save(__dirname + "/public/" + mergedFilename + ".mp3").on('error', function (err) {
           console.log('An error occurred when joining mp3s: ' + err.message);
@@ -139,16 +142,16 @@ app.post('/convert', function (req, res, next) {
             } else {
               console.log('Sent: merged mp3: ' + mergedFilename + ".mp3");
               filenames.map((filename) => {
-                fs.unlink(__dirname + "/public/" + filename + ".wav", (err) => {
+                unlink(__dirname + "/public/" + filename + ".wav", (err) => {
                   if (err) throw err;
                   console.log('path/file.txt was deleted');
                 });
               });
-              fs.unlink(__dirname + "/public/" + mergedFilename + ".wav", (err) => {
+              unlink(__dirname + "/public/" + mergedFilename + ".wav", (err) => {
                 if (err) throw err;
                 console.log('path/file.txt was deleted');
               });
-              fs.unlink(__dirname + "/public/" + mergedFilename + ".mp3", (err) => {
+              unlink(__dirname + "/public/" + mergedFilename + ".mp3", (err) => {
                 if (err) throw err;
                 console.log('path/file.txt was deleted');
               });
@@ -166,7 +169,7 @@ app.listen(PORT, function () {
 
 const saveAndConvert = (response, filename, resolve) => {
 
-  fs.writeFile(__dirname + '/public/' + filename + '.wav', response.audioContent, 'binary', err => {
+  writeFile(__dirname + '/public/' + filename + '.wav', response.audioContent, 'binary', err => {
     if (err) {
       console.error('ERROR:', err);
       return;
