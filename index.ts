@@ -13,17 +13,33 @@ import * as jsdom from 'jsdom';
 const { JSDOM } = jsdom;
 const app = express();
 const PORT = process.env.PORT || 3000;
-process.env['GOOGLE_APPLICATION_CREDENTIALS'] = 'text2speech-cea475955cdf.json';
+process.env['GOOGLE_APPLICATION_CREDENTIALS'] = 'text2speech-214408-bd390a3b6140.json';
 
 // Creates a client
 const client = new TextToSpeechClient();
 
 app.use(json())
 
-app.use('/', express.static(__dirname + '/public'));
+app.use('/', express.static(__dirname + '/public', {maxAge: 60 * 60 * 24 * 365 * 1000}));
 
 app.post('/converturl', function (req, res, next) {
-  axios.get(req.body.url)
+
+  if (req.body.url.includes('www.tagesanzeiger.ch')) {
+    console.log('Using playwright to get payed content')
+    axios.get('https://secret-forest-80542.herokuapp.com/pagecontent', {data: {url: req.body.url}})
+    .then(function (response) {
+      const { document } = (new JSDOM(response.data.content)).window;
+      const article = new Readability(document, null).parse();
+      console.log(article.textContent)
+      // handle success
+      res.json({ textContent: article.textContent });
+    })
+    .catch(function (error) {
+      // handle error
+      next(error);
+    })
+  } else {
+    axios.get(req.body.url)
     .then(function (response) {
       const { document } = (new JSDOM(response.data)).window;
       const article = new Readability(document, null).parse();
@@ -35,24 +51,31 @@ app.post('/converturl', function (req, res, next) {
       // handle error
       next(error);
     })
+  }
+  
 })
 
 app.post('/convert', function (req, res, next) {
   console.log(req.body);
 
-  let languageCode = "de-DE";
-  let voiceName = "de-DE-Wavenet-B";
+  
+  let voiceNameDeM = "de-DE-Wavenet-B";
+  let voiceNameDeF = "de-DE-Wavenet-C";
+  let voiceNameFrM = "fr-FR-Wavenet-B";
+  let voiceNameFrF = "fr-FR-Wavenet-A";
+  let voiceNameEnM = "en-GB-Wavenet-D";
+  let voiceNameEnF = "en-GB-Wavenet-A";
   let gender = "male";
+  let voiceName = voiceNameDeM;
+  let languageCode = 'de-DE'
 
   if (req.body.gender !== gender) {
-    voiceName = "de-DE-Wavenet-C";
+    voiceName = voiceNameDeF;
   }
-  if (req.body.languageCode !== languageCode) {
-    voiceName = "en-GB-Wavenet-D";
-    languageCode = "en-US";
-    if (req.body.gender !== gender) {
-      voiceName = "en-GB-Wavenet-A";
-    }
+  if (req.body.languageCode === 'fr-FR') {
+    voiceName = req.body.languageCode === 'fr-FR' && req.body.gender === gender ? voiceNameFrM : voiceNameFrF;
+  } else if (req.body.languageCode === 'en-US') {
+    voiceName = req.body.languageCode === 'en-US' && req.body.gender === gender ? voiceNameEnM : voiceNameEnF;
   }
 
   let sentencesArray;

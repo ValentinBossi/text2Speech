@@ -10,14 +10,14 @@
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO"
         crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <title>DeepWave Bossi</title>
+    <title>WaveNet Bossi</title>
 </head>
 
 <body>
 
     <div class="jumbotron">
         <h1 class="display-4">Hello, lazy people</h1>
-        <p class="lead">Lean back.......and listen to deeeep wave.......😎</p>
+        <p class="lead">Lean back.......and listen to wave net.......😎</p>
         <hr class="my-4">
         <div class="input-group">
             <div class="input-group-prepend">
@@ -49,6 +49,12 @@
                 English
             </label>
         </div>
+        <div class="form-check" style="display: inline-block;">
+            <input class="form-check-input" type="radio" name="language" id="french">
+            <label class="form-check-label">
+                French
+            </label>
+        </div>
         <br>
         <div class="form-check" style="display: inline-block;">
             <input class="form-check-input" type="radio" name="voice" id="male" checked>
@@ -69,8 +75,8 @@
         <audio id="audio" controls>
             <source id="source" src="" type="audio/mp3" />
         </audio>
-        <iframe style="width:100%; height: 800px;" src="https://www.deepl.com/translator">
-        </iframe>
+        {# <iframe style="width:100%; height: 800px;" src="https://www.deepl.com/translator">
+        </iframe> #}
     </div>
 
 
@@ -78,7 +84,9 @@
 
     <!-- Optional JavaScript -->
     <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-    <script src="jquery-3.3.1.min.js" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"
+        integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4="
+        crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49"
         crossorigin="anonymous"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy"
@@ -92,8 +100,6 @@
 
         });
         autosize(document.getElementById('textarea'));
-        let german = 'de-DE';
-        let english = 'en-US';
 
         const convert = () => {
             document.getElementById("convertButton").innerHTML = 'Convert to audi<i class="fa fa-cog fa-spin" style="font-size:24px"></i>!';
@@ -125,11 +131,14 @@
         }
 
         const fetchAudio = (text) => {
+            let german = $("#german").prop("checked") ? 'de-DE' : null;
+            let english = $("#english").prop("checked") ? 'en-US' : null;
+            let french = $("#french").prop("checked") ? 'fr-FR': null;
             let blob;
             let request = {
                 method: "POST",
                 headers: { "Content-Type": "application/json; charset=utf-8" },
-                body: JSON.stringify({ text: text, languageCode: $("#german").prop("checked") ? german : english, gender: $("#male").prop("checked") ? "male" : "female" })
+                body: JSON.stringify({ text: text, languageCode: german || english || french, gender: $("#male").prop("checked") ? "male" : "female" })
             };
             fetch("/convert", request).then((resp) => {
                 let blob = resp.blob();
