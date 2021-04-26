@@ -1,4 +1,4 @@
-import { unlink, writeFile } from 'fs';
+import { unlink, writeFile, readFileSync } from 'fs';
 import * as express from 'express';
 import { json } from 'body-parser';
 // Imports the Google Cloud client library
@@ -6,59 +6,95 @@ import { TextToSpeechClient } from '@google-cloud/text-to-speech'
 import { google } from "@google-cloud/text-to-speech/build/protos/protos";
 import ISynthesizeSpeechRequest = google.cloud.texttospeech.v1.ISynthesizeSpeechRequest;
 import * as ffmpeg from 'fluent-ffmpeg'
-import * as uuid from 'uuid'
 import axios from 'axios'
 import * as Readability from './public/Readability'
 import * as jsdom from 'jsdom';
+import { S3 } from 'aws-sdk';
+import { v4 as uuid } from 'uuid';
+import * as mime from 'mime-types';
+import { createServer } from 'http';
+import { Server } from 'ws';
 const { JSDOM } = jsdom;
 const app = express();
+const server = createServer(app);
+const wss = new Server({ server });
 const PORT = process.env.PORT || 3000;
 process.env['GOOGLE_APPLICATION_CREDENTIALS'] = 'text2speech-214408-bd390a3b6140.json';
+// from https://devcenter.heroku.com/articles/s3 
+const S3_BUCKET_NAME = process.env['S3_BUCKET_NAME'];
+const s3Region = 'us-east-2';
 
-// Creates a client
-const client = new TextToSpeechClient();
+
+const textToSpeechClient = new TextToSpeechClient();
+//from amazon web services in action book
+const s3Client = new S3({
+  region: s3Region,
+  credentials:
+  {
+    accessKeyId: process.env['AWS_ACCESS_KEY_ID'],
+    secretAccessKey: process.env['AWS_SECRET_ACCESS_KEY']
+  }
+})
+
+let counter = 1;
+wss.on('connection', function (ws) {
+  
+  const id = setInterval(function () {
+    ws.send(JSON.stringify(process.memoryUsage()), function () {
+      //
+      // Ignore errors.
+      //
+    });
+  }, 1000 * counter);
+  console.log('started client interval');
+
+  ws.on('close', function () {
+    console.log('stopping client interval');
+    clearInterval(id);
+  });
+  counter++;
+});
+
 
 app.use(json())
 
-app.use('/', express.static(__dirname + '/public', {maxAge: 60 * 60 * 24 * 365 * 1000}));
+app.use('/', express.static(__dirname + '/public', { maxAge: 60 * 60 * 24 * 365 * 1000 }));
 
 app.post('/converturl', function (req, res, next) {
 
   if (req.body.url.includes('www.tagesanzeiger.ch')) {
     console.log('Using playwright to get payed content')
-    axios.get('https://secret-forest-80542.herokuapp.com/pagecontent', {data: {url: req.body.url}})
-    .then(function (response) {
-      const { document } = (new JSDOM(response.data.content)).window;
-      const article = new Readability(document, null).parse();
-      console.log(article.textContent)
-      // handle success
-      res.json({ textContent: article.textContent });
-    })
-    .catch(function (error) {
-      // handle error
-      next(error);
-    })
+    axios.get('https://secret-forest-80542.herokuapp.com/pagecontent', { data: { url: req.body.url } })
+      .then(function (response) {
+        const { document } = (new JSDOM(response.data.content)).window;
+        const article = new Readability(document, null).parse();
+        console.log(article.textContent)
+        // handle success
+        res.json({ textContent: article.textContent });
+      })
+      .catch(function (error) {
+        // handle error
+        next(error);
+      })
   } else {
     axios.get(req.body.url)
-    .then(function (response) {
-      const { document } = (new JSDOM(response.data)).window;
-      const article = new Readability(document, null).parse();
-      console.log(article.textContent)
-      // handle success
-      res.json({ textContent: article.textContent });
-    })
-    .catch(function (error) {
-      // handle error
-      next(error);
-    })
+      .then(function (response) {
+        const { document } = (new JSDOM(response.data)).window;
+        const article = new Readability(document, null).parse();
+        console.log(article.textContent)
+        // handle success
+        res.json({ textContent: article.textContent });
+      })
+      .catch(function (error) {
+        // handle error
+        next(error);
+      })
   }
-  
 })
 
 app.post('/convert', function (req, res, next) {
   console.log(req.body);
 
-  
   let voiceNameDeM = "de-DE-Wavenet-B";
   let voiceNameDeF = "de-DE-Wavenet-C";
   let voiceNameFrM = "fr-FR-Wavenet-B";
@@ -89,7 +125,7 @@ app.post('/convert', function (req, res, next) {
     return { textChunk: textChunk, filename: uuid() };
   });
 
-  if(chunksAndFilename.length === 0) {
+  if (chunksAndFilename.length === 0) {
     return res.status(400).end();
   }
 
@@ -112,7 +148,7 @@ app.post('/convert', function (req, res, next) {
         }
       };
       // Performs the Text-to-Speech request
-      client.synthesizeSpeech(request, (err, response) => {
+      textToSpeechClient.synthesizeSpeech(request, (err, response) => {
         if (err) {
           console.error('ERROR:', err);
           return;
@@ -134,11 +170,49 @@ app.post('/convert', function (req, res, next) {
       command.audioBitrate('48k').save(__dirname + "/public/" + mergedFilename + ".mp3").on('error', function (err) {
         console.log('An error occurred when saving mp3: ' + err.message);
       }).on('end', function () {
-        res.sendFile(__dirname + "/public/" + mergedFilename + ".mp3", function (err) {
-          if (err) {
-            next(err);
-          } else {
-            console.log('Sent: merged mp3: ' + mergedFilename + ".mp3");
+        const s3uuid = uuid();
+        const key = `audio/${s3uuid}`;
+        const result = s3Client.putObject({
+          Bucket: S3_BUCKET_NAME,
+          Key: key,
+          Body: readFileSync(__dirname + "/public/" + mergedFilename + ".mp3"),
+          ContentType: mime.lookup('mp3') as string,
+          ACL: 'public-read'
+        }).promise().then(() => {
+          const url = `https://${S3_BUCKET_NAME}.s3.${s3Region}.amazonaws.com/${key}`;
+          res.json({ audioUrl: url })
+          console.log('Sent: merged mp3 to s3: ' + url);
+          filenames.map((filename) => {
+            unlink(__dirname + "/public/" + filename + ".wav", (err) => {
+              if (err) throw err;
+              console.log('path/file.txt was deleted');
+            });
+          });
+          unlink(__dirname + "/public/" + mergedFilename + ".mp3", (err) => {
+            if (err) throw err;
+            console.log('path/file.txt was deleted');
+          });
+        }).catch(next);
+      });
+    } if (filenames.length > 1) {
+      command.mergeToFile(__dirname + "/public/" + mergedFilename + ".wav").on("end", () => {
+        command = ffmpeg();
+        command.input(__dirname + "/public/" + mergedFilename + ".wav").audioBitrate('48k').save(__dirname + "/public/" + mergedFilename + ".mp3").on('error', function (err) {
+          console.log('An error occurred when joining mp3s: ' + err.message);
+        }).on('end', function () {
+          console.log('Merging finished !');
+          const s3uuid = uuid();
+          const key = `audio/${s3uuid}`;
+          const result = s3Client.putObject({
+            Bucket: S3_BUCKET_NAME,
+            Key: key,
+            Body: readFileSync(__dirname + "/public/" + mergedFilename + ".mp3"),
+            ContentType: mime.lookup('mp3') as string,
+            ACL: 'public-read'
+          }).promise().then(() => {
+            const url = `https://${S3_BUCKET_NAME}.s3.${s3Region}.amazonaws.com/${key}`;
+            res.json({ audioUrl: url })
+            console.log('Sent: merged mp3 to s3: ' + url);
             filenames.map((filename) => {
               unlink(__dirname + "/public/" + filename + ".wav", (err) => {
                 if (err) throw err;
@@ -149,45 +223,15 @@ app.post('/convert', function (req, res, next) {
               if (err) throw err;
               console.log('path/file.txt was deleted');
             });
-          }
-        });
-      });
-    } if (filenames.length > 1) {
-      command.mergeToFile(__dirname + "/public/" + mergedFilename + ".wav").on("end", () => {
-        command = ffmpeg();
-        command.input(__dirname + "/public/" + mergedFilename + ".wav").audioBitrate('48k').save(__dirname + "/public/" + mergedFilename + ".mp3").on('error', function (err) {
-          console.log('An error occurred when joining mp3s: ' + err.message);
-        }).on('end', function () {
-          console.log('Merging finished !');
-          res.sendFile(__dirname + "/public/" + mergedFilename + ".mp3", function (err) {
-            if (err) {
-              next(err);
-            } else {
-              console.log('Sent: merged mp3: ' + mergedFilename + ".mp3");
-              filenames.map((filename) => {
-                unlink(__dirname + "/public/" + filename + ".wav", (err) => {
-                  if (err) throw err;
-                  console.log('path/file.txt was deleted');
-                });
-              });
-              unlink(__dirname + "/public/" + mergedFilename + ".wav", (err) => {
-                if (err) throw err;
-                console.log('path/file.txt was deleted');
-              });
-              unlink(__dirname + "/public/" + mergedFilename + ".mp3", (err) => {
-                if (err) throw err;
-                console.log('path/file.txt was deleted');
-              });
-            }
-          });
+          }).catch(next);
         });
       });
     }
   }).catch((err) => { console.log("error promise.all: ", err) });
 });
 
-app.listen(PORT, function () {
-  console.log('Example app listening on port ' + PORT +'!');
+server.listen(PORT, function () {
+  console.log('Example app listening on port ' + PORT + '!');
 });
 
 const saveAndConvert = (response, filename, resolve) => {
