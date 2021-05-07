@@ -7,8 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
     <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO"
-        crossorigin="anonymous">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css"
+        integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <title>WaveNet Bossi</title>
 </head>
@@ -34,7 +34,7 @@
                 aria-describedby="inputGroup-sizing-sm">
         </div>
         <p>Don't be eager...</p>
-        <a id="convertButton" class="btn btn-primary btn-lg" onclick="convert()" role="button">Convert to audio!</a>
+        <a id="convertButton" class="btn btn-primary btn-lg" role="button">Convert to audio!</a>
         <br>
         <div id="blob"></div>
         <div class="form-check" style="display: inline-block;">
@@ -75,82 +75,118 @@
         <audio id="audio" controls>
             <source id="source" src="" type="audio/mp3" />
         </audio>
-        {# <iframe style="width:100%; height: 800px;" src="https://www.deepl.com/translator">
-        </iframe> #}
     </div>
-
-
-
 
     <!-- Optional JavaScript -->
     <!-- jQuery first, then Popper.js, then Bootstrap JS -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"
-        integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4="
+        integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js"
+        integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49"
         crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49"
-        crossorigin="anonymous"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy"
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js"
+        integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy"
         crossorigin="anonymous"></script>
     <script src="autosize.js"></script>
-    <script>
+    <script type="module">
         $(document).ready(function () {
             setTimeout(() => {
                 $("#textarea").focus();
-            }, 800);
-
+            }, 100);
         });
         autosize(document.getElementById('textarea'));
 
-        const convert = () => {
-            document.getElementById("convertButton").innerHTML = 'Convert to audi<i class="fa fa-cog fa-spin" style="font-size:24px"></i>!';
-            if (document.getElementById('adressToArticle').value === "") {
-                let text = document.getElementById('textarea').value;
-                fetchAudio(text);
-            } else {
-                let url = document.getElementById('adressToArticle').value;
-                fetchText(url)
-                    .then((response) =>
-                        response.json())
-                    .then((body) =>
-                        fetchAudio(body.textContent)
-                    )
-                    .catch((error) => {
-                        console.log(error);
-                        document.getElementById("convertButton").innerHTML = 'Convert to audio!';
-                    })
-            }
-        }
+        import { fromEvent, merge, of, pipe, interval } from 'https://cdn.skypack.dev/rxjs';
+        import { fromFetch } from 'https://cdn.skypack.dev/rxjs/fetch'
+        import { map, tap, filter, mergeMap, switchMap, exhaustMap, catchError, take } from 'https://cdn.skypack.dev/rxjs/operators'
 
-        const fetchText = (url) => {
-            var request = {
+        const dev = document.location.host.includes("localhost");
+        const ws = new WebSocket(`ws${dev ? '' : 's'}://${document.location.host}`);
+
+        const onopen$ = fromEvent(ws, 'open').pipe(tap(() => console.log("ws is opened...")))
+
+        const onclose$ = fromEvent(ws, 'close').pipe(tap(() => console.log("ws is closed...")))
+
+        const onmessage$ = fromEvent(ws, 'message').pipe(tap((message) => console.log("message: ", message)))
+
+        const ws$ = merge(onopen$, onmessage$, onclose$).subscribe();
+
+        const convertButton = document.getElementById("convertButton");
+
+        const clickConvert$ = fromEvent(convertButton, 'click');
+
+        const triggerButtonSpinner = pipe(
+            tap(() => document.getElementById("convertButton").innerHTML = 'Convert to audi<i class="fa fa-cog fa-spin" style="font-size:24px"></i>!')
+        )
+
+        const resetButtonSpinner = pipe(
+            tap(() => document.getElementById("convertButton").innerHTML = 'Convert to audio!')
+        );
+
+        const fetchResponseHandling = pipe(
+            mergeMap(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    return of({ error: true, message: `Error ${response.status}` });
+                }
+            }),
+            catchError(err => {
+                console.error(err);
+                return of({ error: true, message: err.message });
+            })
+        )
+
+        const fetchContent = (url) => {
+            const request = {
                 method: "POST",
                 headers: { "Content-Type": "application/json; charset=utf-8" },
-                body: JSON.stringify({ url: url })
+                body: JSON.stringify({ url })
             };
-            return fetch("/converturl", request);
+            return fromFetch("/converturl", request)
+                .pipe(
+                    fetchResponseHandling,
+                    mergeMap(body => fetchAudio(body.textContent))
+                );
         }
 
         const fetchAudio = (text) => {
-            let german = $("#german").prop("checked") ? 'de-DE' : null;
-            let english = $("#english").prop("checked") ? 'en-US' : null;
-            let french = $("#french").prop("checked") ? 'fr-FR': null;
-            let blob;
-            let request = {
+            const german = $("#german").prop("checked") ? 'de-DE' : null;
+            const english = $("#english").prop("checked") ? 'en-US' : null;
+            const french = $("#french").prop("checked") ? 'fr-FR' : null;
+            const request = {
                 method: "POST",
                 headers: { "Content-Type": "application/json; charset=utf-8" },
-                body: JSON.stringify({ text: text, languageCode: german || english || french, gender: $("#male").prop("checked") ? "male" : "female" })
+                body: JSON.stringify({ text, languageCode: german || english || french, gender: $("#male").prop("checked") ? "male" : "female" })
             };
-            fetch("/convert", request).then((resp) => {
-                let blob = resp.blob();
-                blob.then((blob) => {
-                    var blobUrl = URL.createObjectURL(blob);
-                    $("#source").attr("src", blobUrl);
-                    $("#audio")[0].load();
-                    document.getElementById("convertButton").innerHTML = 'Convert to audio!';
-                    $('body').append('<br> Blob URL : <a href="' + blobUrl + '" target="_blank">' + blobUrl + '</a><br>');
-                }).catch((data) => console.log(data));
-            }).catch((data) => document.getElementById("convertButton").innerHTML = 'Convert to audio!');
+            return fromFetch("/convert", request)
+                .pipe(fetchResponseHandling);
         }
+
+        const convertTextArea$ = clickConvert$.pipe(
+            filter(() => !document.getElementById('adressToArticle').value),
+            triggerButtonSpinner,
+            map(() => document.getElementById('textarea').value),
+            exhaustMap(fetchAudio)
+        )
+
+        const convertUrl$ = clickConvert$.pipe(
+            filter(() => document.getElementById('adressToArticle').value),
+            triggerButtonSpinner,
+            map(() => document.getElementById('adressToArticle').value),
+            exhaustMap(fetchContent)
+        )
+
+        const convertText$ = merge(convertUrl$, convertTextArea$);
+
+        convertText$
+            .pipe(resetButtonSpinner)
+            .subscribe(data => {
+                $("#source").attr("src", data.audioUrl);
+                $("#audio")[0].load();
+            }, err => {
+                console.log(err);
+            })
     </script>
 </body>
 
