@@ -36,23 +36,8 @@ const s3Client = new S3({
   }
 })
 
-let counter = 1;
 wss.on('connection', function (ws) {
-  
-  const id = setInterval(function () {
-    ws.send(JSON.stringify(process.memoryUsage()), function () {
-      //
-      // Ignore errors.
-      //
-    });
-  }, 1000 * counter);
-  console.log('started client interval');
-
-  ws.on('close', function () {
-    console.log('stopping client interval');
-    clearInterval(id);
-  });
-  counter++;
+  ws.send("connected... :)");
 });
 
 
