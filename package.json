@@ -18,7 +18,7 @@
     "fluent-ffmpeg": "^2.1.2",
     "jsdom": "^13.0.0",
     "mime-types": "^2.1.30",
-    "rxjs": "^6.3.2",
+    "rxjs": "7.0.0",
     "ts-node": "^9.1.1",
     "uuid": "^3.3.2",
     "websocket": "^1.0.34",
